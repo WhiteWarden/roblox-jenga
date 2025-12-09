@@ -8,6 +8,7 @@ local serverUtil = require(ServerScriptService:WaitForChild("serverUtil"))
 local helperFunctions = require(ReplicatedStorage:WaitForChild("Scripts"):WaitForChild("helperFunctions"))
 local utilityFunctions = require(ReplicatedStorage:WaitForChild("ModuleScripts"):WaitForChild("utilityFunctions"))
 
+local suffixes = {"K", "M", "B", "T", "Q"} --for abbreviating large numbers
 workspace.Testing:Destroy()
 
 RunService.Heartbeat:Connect(function()
@@ -28,8 +29,8 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
---[[
-function playersOnPlatform(platform)
+
+function playersOnPlatform2(platform)
 	local parts = workspace:GetPartBoundsInBox(platform.CFrame + Vector3.new(0, 8, 0), platform.Size + Vector3.new(0, 16, 0))
 	local playersFound = {}
 	for x = 1, #parts do
@@ -43,16 +44,17 @@ function playersOnPlatform(platform)
 
 	return playersFound
 end
-]]
 
---[[for _, pad in pairs(workspace.StartingPads:GetChildren()) do
+function activatePads2()
+for _, pad in pairs(workspace.StartingPads:GetChildren()) do
 	pad.Touched:Connect(function(hit)
 		local player = Players:GetPlayerFromCharacter(hit.Parent)
 		if player then
 			startPartyTimer(tonumber(pad.Name))
 		end
 	end)
-end]]
+end
+end
 
 for matchId = 1, serverUtil.startPadsActive() do
 	workspace.Arenas[tostring(matchId)].Floor.Touched:Connect(function(hit)
@@ -206,6 +208,35 @@ ReplicatedStorage.Functions.purchaseItemWithMoney.OnServerInvoke = function(play
 	end
 end
 
+function NthValue(min, max, n, total)
+	--returns value between min and max that is Nth of the total available
+	return math.round(min + (n - 1) * (max - min) / (total - 1))
+end
+
+function abbreviateNumber(number)
+	if not number then
+		return 0
+	end
+	if number == 0 then
+		return 0
+	end
+
+	--check for powers of 10 and add the appropriate suffix
+	local finalNr = math.floor((((number/1000^(math.floor(math.log(number, 1e3))))*100)+0.5)) /100 .. (suffixes[math.floor(math.log(number, 1e3))] or "")
+	return finalNr
+end
+
+function shuffle(t)
+	for i = #t, 1, -1 do
+		local j = math.random(i)
+		t[i], t[j] = t[j], t[i]
+	end
+end
+
+function getMonthAndDay()
+	local today = os.date("*t", os.time())
+	return today.month, today.day
+end
 
 while task.wait(.5) do
 	for matchId = 1, serverUtil.startPadsActive() do
