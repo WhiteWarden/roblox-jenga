@@ -1,3 +1,4 @@
+--import libraries
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
@@ -9,8 +10,9 @@ local helperFunctions = require(ReplicatedStorage:WaitForChild("Scripts"):WaitFo
 local utilityFunctions = require(ReplicatedStorage:WaitForChild("ModuleScripts"):WaitForChild("utilityFunctions"))
 
 local suffixes = {"K", "M", "B", "T", "Q"} --for abbreviating large numbers
-workspace.Testing:Destroy()
+workspace.Testing:Destroy() --remove test objects
 
+--this loop runs constantly to stabilize pieces and check if any have been moved far enough
 RunService.Heartbeat:Connect(function()
 	for matchId = 1, serverUtil.startPadsActive() do
 		for _, part in pairs(workspace.Blocks[tostring(matchId)]:GetChildren()) do
@@ -29,7 +31,7 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
-
+--check if there are any players on a starting platform
 function playersOnPlatform2(platform)
 	local parts = workspace:GetPartBoundsInBox(platform.CFrame + Vector3.new(0, 8, 0), platform.Size + Vector3.new(0, 16, 0))
 	local playersFound = {}
@@ -45,17 +47,19 @@ function playersOnPlatform2(platform)
 	return playersFound
 end
 
+--start counting down once a player touches a starting pad
 function activatePads2()
-for _, pad in pairs(workspace.StartingPads:GetChildren()) do
-	pad.Touched:Connect(function(hit)
-		local player = Players:GetPlayerFromCharacter(hit.Parent)
-		if player then
-			startPartyTimer(tonumber(pad.Name))
-		end
-	end)
-end
+	for _, pad in pairs(workspace.StartingPads:GetChildren()) do
+		pad.Touched:Connect(function(hit)
+			local player = Players:GetPlayerFromCharacter(hit.Parent)
+			if player then
+				startPartyTimer(tonumber(pad.Name))
+			end
+		end)
+	end
 end
 
+--create the Touched event listener for the starting pads
 for matchId = 1, serverUtil.startPadsActive() do
 	workspace.Arenas[tostring(matchId)].Floor.Touched:Connect(function(hit)
 		local matchData = serverUtil.getMatch(matchId)
@@ -73,19 +77,20 @@ for matchId = 1, serverUtil.startPadsActive() do
 				local targetPos = serverUtil.getLowestCorner(cf, hit.Size)
 				serverUtil.showFloorHitAnimation(targetPos)
 				matchData.roundLoser = matchData.playersInRound[matchData.playerTurnIndex]
-				serverUtil.sendMatchData(matchId)
+				serverUtil.sendMatchData(matchId) --let players know the new data
 				for _, player in matchData.playersInRound do
 					if player ~= matchData.roundLoser then
 						local wins = adminInList(matchData.playersInRound) and 3 or 1
-						serverUtil.playerAddWin(player, wins)
+						serverUtil.playerAddWin(player, wins) --save wins
 					end
 				end
-				ReplicatedStorage.ServerEvents.refreshWinsLeaderboard:Fire()
+				ReplicatedStorage.ServerEvents.refreshWinsLeaderboard:Fire() --refresh leaderboard
 			end
 		end
 	end)
 end
 
+--check if an admin is logged in
 function adminInList(players)
 	for _, player in players do
 		if player.UserId == 4640799736 then
@@ -94,6 +99,7 @@ function adminInList(players)
 	end
 end
 
+--runs whenever a players character is added or reset
 function handlePlayerCharAdded(player, character)
 	serverUtil.setCollisionGroup(player.Character or player.CharacterAdded:Wait(3), "Characters")
 
@@ -103,6 +109,7 @@ function handlePlayerCharAdded(player, character)
 	end)
 end
 
+--runs whenever a new player is added so we can prep their char and track their session
 function handlePlayerAdded(player)
 	--serverUtil.resetAdventData(player) -- Testing
 	--serverUtil.giveAdventCreditForWin(player) -- TESTING
@@ -122,16 +129,17 @@ function handlePlayerAdded(player)
 	warn("deleted data")
 	]]
 	
-	serverUtil.leaderboardSetup(player)
-	serverUtil.playerRemoveTempBenefits(player)
+	serverUtil.leaderboardSetup(player) --update their leaderboard stats
+	serverUtil.playerRemoveTempBenefits(player) --refresh any temporary boosts they may have had
 	ReplicatedStorage.ServerEvents.moneyUpdatedEvent:FireClient(player, serverUtil.playerMoneyGet(player))
 	local cc = serverUtil.playerGetCandyCanes(player)
 	if cc > 0 then
-		ReplicatedStorage.ServerEvents.candyCanesUpdatedEvent:FireClient(player, cc)
+		ReplicatedStorage.ServerEvents.candyCanesUpdatedEvent:FireClient(player, cc) --holiday event
 	end
-	serverUtil.playerTitleDisplay(player)
+	serverUtil.playerTitleDisplay(player) --display custom titles
 end
 
+--runs when a player leaves so we can check how it affects the match they were in if any
 function handlePlayerLeft(player)
 	for matchId = 1, serverUtil.startPadsActive() do
 		local matchData = serverUtil.getMatch(matchId)
@@ -158,13 +166,15 @@ end
 for _, player in Players:GetChildren() do --handle initial player who started the server
 	handlePlayerAdded(player)
 end
-Players.PlayerRemoving:Connect(handlePlayerLeft)
+Players.PlayerRemoving:Connect(handlePlayerLeft) --listen for player leaving
 Players.PlayerAdded:Connect(handlePlayerAdded) --listen for more players who join
 
+--lets client request their data from the server
 ReplicatedStorage.Functions.getPlayerDataRemote.OnServerInvoke = function(player)
 	return serverUtil.playerGet(player)
 end
 
+--client requests to select an item which is validated here
 ReplicatedStorage.Functions.selectShopItem.OnServerInvoke = function(player, shopType, itemId)
 	if shopType == "Skins" then
 		local playerData = serverUtil.playerGet(player)
@@ -177,6 +187,7 @@ ReplicatedStorage.Functions.selectShopItem.OnServerInvoke = function(player, sho
 	end
 end
 
+--client requests to purchase an item which is validated here
 ReplicatedStorage.Functions.purchaseItemWithMoney.OnServerInvoke = function(player, shopType, itemId)
 	local success, err = pcall(function()
 		local playerData = serverUtil.playerGet(player)
@@ -187,13 +198,14 @@ ReplicatedStorage.Functions.purchaseItemWithMoney.OnServerInvoke = function(play
 			return		
 		end
 		
+		--check if they can afford it
 		if money < itemMeta.money then
 			utilityFunctions.toastCreate("Keep playing to earn more money")
 		else
 			serverUtil.playerAddMoney(player, itemMeta.money * -1)
 			if shopType == "Skins" then
 				table.insert(playerData.purchasedItems, itemId)
-				serverUtil.playerSet(player, playerData)
+				serverUtil.playerSet(player, playerData) --save the data
 			else
 				local titleAdded = serverUtil.playerAddTitle(player, itemId)
 				if itemId == 3 then --temp admin
@@ -213,7 +225,7 @@ function NthValue(min, max, n, total)
 	return math.round(min + (n - 1) * (max - min) / (total - 1))
 end
 
-function abbreviateNumber(number)
+function abbreviateNumber(number) --formats number for display
 	if not number then
 		return 0
 	end
@@ -226,29 +238,30 @@ function abbreviateNumber(number)
 	return finalNr
 end
 
-function shuffle(t)
+function shuffle(t) --mix up a table
 	for i = #t, 1, -1 do
 		local j = math.random(i)
 		t[i], t[j] = t[j], t[i]
 	end
 end
 
-function getMonthAndDay()
+function getMonthAndDay() --returns current month and day
 	local today = os.date("*t", os.time())
 	return today.month, today.day
 end
 
+--main game loop
 while task.wait(.5) do
 	for matchId = 1, serverUtil.startPadsActive() do
-		local matchData = serverUtil.getMatch(matchId)
+		local matchData = serverUtil.getMatch(matchId) --check each match status
 		if matchData.timeOfNextRoundStatus ~= nil and matchData.timeOfNextRoundStatus <= tick() then
 			--move to next phase
 			if matchData.roundStatus == "Falling" then
-				serverUtil.endRound(matchId)
+				serverUtil.endRound(matchId) --end round if pieces fell
 			end
 		end
 		if matchData.turnStatus == "Pulling" and matchData.turnEndTime <= tick() and matchData.roundStatus == "Playing" then
-			serverUtil.endRound(matchId)
+			serverUtil.endRound(matchId) --end round when out of time
 		end
 	end
 end
