@@ -21,15 +21,15 @@ local clientUtil = require(player:WaitForChild("PlayerScripts"):WaitForChild("cl
 --game.StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false) --hide leaderstast board
 --game.StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false) --hide chat by default
 local startingSpeed = 40 --40 default is around lobby walking speed. 200 is good for testing with
-local speed = 0
-local acceleration = 0
-local char --= player.Character or player.CharacterAdded:Wait()
-local hrp --= char:WaitForChild("HumanoidRootPart")
-local humanoid --= char:WaitForChild("Humanoid")
-local lane = 2
-local previousLane = lane
+local speed = 0 --player's speed
+local acceleration = 0 --acceleration of speed
+local char --cache player's character object
+local hrp --cache player's root part
+local humanoid --cache player's humanoid
+local lane = 2 --lane the player is in
+local previousLane = lane --last lane the player was in
 local changingLanes = nil --"Right" or "Left"
-local laneWidth = 8
+local laneWidth = 8 --width in studs of lanes
 local centerLaneX = 0 --x position of the center lane to match the prebuilt path
 local laneChangeStartedCFrame
 local nextObstacleAtZ = 50
@@ -51,8 +51,8 @@ https://create.roblox.com/docs/animation/using#catalog-animations ]]
 local animTracks = {}  -- preloaded cache: { [animId] = track }
 local stamina = 0
 local maxStamina = 100 --can be upgraded
-local inAir = false
-local onRamp = false
+local inAir = false --track if player is airborne
+local onRamp = false --track if player is on a ramp-tagged part
 local crashed = false --prevents movement after crashing
 local lastHrpHeights = {} --used to detect if player is ascending or falling
 local lastHrpPosition = Vector3.zero --for collision detection
@@ -70,7 +70,7 @@ local windSound = SoundService.wind_loop
 local jumpBeginHeight = 0
 --local maxComfortableSpeed = 999
 local runStartTime = 0
-local materialChangedTime = tick()
+local materialChangedTime = tick() --last time the material under the player changed
 local activeInputs = {} --track all active inputs
 local inputQueue = {} --each entry should have {action = "", begin: boolean, z} actions are Up, Down, Left, Right
 local inputActionLength = {["Up"] = 30, ["Down"] = 10, ["Left"] = 40, ["Right"] = 40} --how many studs it lasts. For example, I press jump half way up a 40-stud ramp, it can wait and jump at the end.
@@ -98,7 +98,7 @@ local highScore = ReplicatedStorage.Functions.getHighscore:InvokeServer()
 local speedBoostsUsed = 0
 --local playerModule = require(playerScripts:WaitForChild("PlayerModule"))
 
-function beginRun(restarting: boolean)
+function beginRun(restarting: boolean) --used to start a new run
 	crashed = false --required before game pause
 	if not clientUtil.getGamePaused() then
 		togglePause(false) --anchors player
@@ -107,7 +107,7 @@ function beginRun(restarting: boolean)
 	end
 	
 	clientUtil.setInLobby(false)
-	local direction = CFrame.Angles(0, math.rad(180), 0)
+	local direction = CFrame.Angles(0, math.rad(180), 0) --angle the player should face
 	hrp:PivotTo(CFrame.new(Vector3.new(centerLaneX, 5, restarting and 15 or 0)) * direction)
 	hrp.LinearVelocityZ.Enabled = true --gameMode ~= "Treadmill"
 	hrp.AlignOrientation.Enabled = true
@@ -148,13 +148,13 @@ function beginRun(restarting: boolean)
 	humanoid.WalkSpeed = 0
 	--humanoid.JumpPower = 0.001 --jumps use custom physics instead
 	humanoid.JumpHeight = 0.001 --disables mobile jump button without hiding it
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) --disable certain states to control animations
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, false)
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, false)
-	humanoid.AutoRotate = false
+	humanoid.AutoRotate = false --direction is scripted
 	char:WaitForChild("Animate").Enabled = false --disable default animations
-	camera.CameraType = Enum.CameraType.Scriptable
+	camera.CameraType = Enum.CameraType.Scriptable --take control of the camera
 	toggleCameraConnection(true)
 	nextObstacleAtZ = 250 --determines when the first obstacle will appear
 	lastPathEndsAtZ = 300 --determines when the next path part will appear
@@ -222,7 +222,7 @@ function toggleRunUIs() --should be called after setInLobby
 	setSpeedBoostFrameVisibility()
 end
 
-function endRun(endReason: string, startAnotherRun: boolean)
+function endRun(endReason: string, startAnotherRun: boolean) --end the current run and cleanup
 	crashed = true
 	inputQueue = {}
 	clientUtil.toggleVignette(nil)
@@ -258,8 +258,8 @@ function returnToLobby()
 		task.wait()
 	end
 	local spawnCFrame = workspace.SpawnLocation.CFrame
-	hrp:PivotTo(CFrame.new(spawnCFrame.Position + Vector3.new(0, 4, 0)) * spawnCFrame.Rotation)
-	hrp.LinearVelocityZ.Enabled = false
+	hrp:PivotTo(CFrame.new(spawnCFrame.Position + Vector3.new(0, 4, 0)) * spawnCFrame.Rotation) --teleport player above spawn
+	hrp.LinearVelocityZ.Enabled = false --disable physics controls
 	hrp.LinearVelocityY.Enabled = false
 	hrp.AlignOrientation.Enabled = false
 	hrp.AlignPositionX.Enabled = false
@@ -267,14 +267,14 @@ function returnToLobby()
 	humanoid.WalkSpeed = 32
 	--humanoid.JumpPower = 50
 	humanoid.JumpHeight = 18
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true) --set states back to defaults
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, true)
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
-	humanoid.AutoRotate = true
+	humanoid.AutoRotate = true --let player move normally
 	char:WaitForChild("Animate").Enabled = true
-	toggleCameraConnection(false)
-	camera.CameraType = Enum.CameraType.Custom
+	toggleCameraConnection(false) --cleanup camera connection
+	camera.CameraType = Enum.CameraType.Custom --back to default
 	camera.CameraSubject = humanoid
 	crashed = false
 	tutorialMode = false
@@ -283,92 +283,6 @@ function returnToLobby()
 	end
 	toggleRunUIs()
 end
-
---[[function calcMaxComfortableSpeed()
-	--check top speeds to determine when to ease off speed ramping
-	if playerData and playerData.runTopSpeeds and #playerData.runTopSpeeds > 1 then
-		--sort to get top speeds
-		table.sort(playerData.runTopSpeeds, function(a, b)
-			return a > b --descending
-		end)
-		
-		local speedSum = 0
-		local speedsToAdd = math.min(6, #playerData.runTopSpeeds) --include up to this many runs
-		for x=  1, speedsToAdd do
-			speedSum += playerData.runTopSpeeds[x]
-		end
-		
-		return speedSum / speedsToAdd --average
-	else 
-		return 999
-	end
-end]]
-
---[[function addPath()
-	if not hrp then warn("no hrp in addPath") return end
-	
-	local o = ReplicatedStorage.Runways[biome]:Clone()
-	o.Parent = workspace.PathParts
-	local part = o:IsA("Model") and o.PrimaryPart or o
-	local x = centerLaneX
-	local y = 1 - part.Size.Y / 2
-	local z = lastPathEndsAtZ + part.Size.Z / 2
-	o:PivotTo(CFrame.new(Vector3.new(x, y, z)))
-	lastPathEndsAtZ = part.Position.Z + part.Size.Z / 2
-	local pathBeginZ = part.Position.Z - part.Size.Z / 2
-	local pathEndZ = part.Position.Z + part.Size.Z / 2
-
-	--update decor for each biome
-	if biome == "Forest" then
-		for _, tree in o:GetDescendants() do
-			if tree:IsA("Model") and tree.Name == "Tree" then
-				if math.random(1, 7) == 1 then
-					tree:Destroy()
-				end
-			end
-		end
-	elseif biome == "Water" and clientUtil.getSceneryEnabled() then
-		for z = math.round(pathBeginZ), math.round(pathEndZ), 3 do
-			local foliage = math.random(1, 8) == 1 and "Reed" or "Grass"
-			local maxScale = foliage == "Grass" and 2.3 or 1.4
-			local grass = ReplicatedStorage.Decor[foliage]:Clone()
-			grass.Parent = workspace.Scenery
-			local pos = helperFunctions.randomPointOnShoulderNearZ(z, 1, Vector3.one)
-			local angle = CFrame.Angles(math.rad(math.random(-5, 5)), math.rad(math.random(0, 359)), math.rad(math.random(-5, 5)))
-			grass:ScaleTo(math.random(100, maxScale * 100) / 100)
-			grass:PivotTo(CFrame.new(pos) * angle)
-		end
-	elseif biome == "Desert" and clientUtil.getSceneryEnabled() then
-		helperFunctions.addCactus(pathBeginZ, pathEndZ)
-	end
-	
-	helperFunctions.addRocks(pathBeginZ, pathEndZ)
-	
-	--determine if new parts need to be added
-	if not tutorialMode 
-		and not hrp.Anchored --don't spawn while round is beginning
-		and biome ~= "Desert" --desert obstacles are chained in advance
-	then
-		while nextObstacleAtZ < pathEndZ do
-			if biome == "Forest" and ((nextObstacleAtZ < 2000 and math.random(1, 4) == 1)
-				or (nextObstacleAtZ < 5000 and math.random(1, 12) == 1)
-				or (nextObstacleAtZ > 5000 and math.random(1, 25) == 1))
-			then
-				nextObstacleAtZ = helperFunctions.addLeafBoost(centerLaneX, nextObstacleAtZ) --near beginning of run, you can get these instead of an obstacle
-			else
-				nextObstacleAtZ, lastObstacleAdded = helperFunctions.addObstacle(biome, nextObstacleAtZ, runStartTime, lastObstacleAdded)
-			end
-			
-		end
-	end
-end]]
-
---[[function densityRating()
-	--ramps from 0 to 1 over x seconds, then drops to 0 again
-	local duration = tick() - runStartTime
-	local distBetweenDrops = 30
-	return math.fmod(duration / distBetweenDrops, 1)
-end]]
 
 function cleanupPastParts() --delete parts that are too far behind player
 	if crashed or not hrp then return end
@@ -386,48 +300,10 @@ function cleanupPastParts() --delete parts that are too far behind player
 	end
 end
 
---[[function addFlowerPatch(startAtZ, length)
-	if not sceneryEnabled then return end
-
-	--amount of flowers should follow sine wave with gaps between
-	local flowerChunckSize = 10 --flowers will be placed in this sized area
-	local color = flowerColors[math.random(1, #flowerColors)]
-	local maxFlowers = 10 -- max density at peak
-
-	local nextFlowerPatchAtZ = startAtZ + math.random(10, 40) --start after first gap
-
-	while true do
-		local lengthOfPatch = math.random(5, 40) --number of patch chunks
-		local coeficient = 2 * math.pi / lengthOfPatch --determines distance between peaks
-		if nextFlowerPatchAtZ + lengthOfPatch > startAtZ + length then
-			break --stop if next patch won't fit
-		end
-		
-		for x = 0, lengthOfPatch do
-			local flowers = math.sin(coeficient * x - math.pi / 2) * (maxFlowers / 2) + (maxFlowers / 2)
-			for i = 1, math.round(flowers) do
-				local flower = ReplicatedStorage.Decor.Flower:Clone()
-				for _, petal in flower:GetChildren() do
-					if petal.Name == "Petal" then
-						petal.Color = Color3.fromHex(color)
-					end
-				end
-				flower.Parent = biome ~= "Desert" and workspace.Scenery or nil --no flowers in desert, but I want rocks
-				local pos = helperFunctions.randomPointOnShoulderNearZ(nextFlowerPatchAtZ + x * flowerChunckSize, flowerChunckSize, Vector3.one)
-				local pos = pos + Vector3.new(0, math.random(-10, 10) / 20, 0) --up or down by .5
-				local angle = CFrame.Angles(math.rad(math.random(-5, 5)), math.rad(math.random(0, 89)), math.rad(math.random(-5, 5)))
-				flower:PivotTo(CFrame.new(pos) * angle)
-			end
-		end
-
-		nextFlowerPatchAtZ += lengthOfPatch * flowerChunckSize + math.random(50, 200)
-	end
-end]]
-
-function setSpeed(newAmount)
+function setSpeed(newAmount) --apply acceleration 
 	local med = 160
 	local fast = 250
-	if speed == startingSpeed then
+	if speed == startingSpeed then --update the music type based on speed
 		clientUtil.setMusicSpeedLevel("Slow")
 	elseif speed < med and newAmount >= med then
 		clientUtil.setMusicSpeedLevel("Med")
@@ -435,183 +311,12 @@ function setSpeed(newAmount)
 		clientUtil.setMusicSpeedLevel("Fast")
 	end
 	speed = newAmount
-	hrp.LinearVelocityZ.LineVelocity = speed
-	hrp.AlignPositionX.Responsiveness = speed
+	hrp.LinearVelocityZ.LineVelocity = speed --set constant forward velocity
+	hrp.AlignPositionX.Responsiveness = speed --set how quickly you move side to side
 	setSpeedBoostFrameVisibility()
 end
 
---[[function addLeafBoost()
-	local leaves = ReplicatedStorage.LeafPile:Clone()
-	leaves.Parent = workspace.Scenery
-	local offsetX = math.random(-1, 1) * laneWidth
-	leaves:PivotTo(CFrame.new(Vector3.new(centerLaneX + offsetX, 3.55, nextObstacleAtZ)))
-	
-	local connection
-	connection = leaves.Part.Touched:Connect(function(hit)
-		if hit == hrp then
-			connection:Disconnect()
-			local speedBoost = 200 / speed -- +4 at 50 down to +1 at 200
-			local bonus = helperFunctions.sumAtoAPlusB(speed, speedBoost) / 2
-			setSpeed(speed + speedBoost)
-			score += bonus
-			
-			SoundService.Boost:Play()
-			leavesCollected += 1
-			if leavesCollected == 10 then
-				updateTaskProgress(7, leavesCollected)
-			end
-		end
-	end)
-	nextObstacleAtZ += 30
-end]]
-
---[[function addRocks(startZ, endZ)
-	for z = math.round(startZ), math.round(endZ) do
-		if math.random(1, 40) == 1 then
-			local r = ReplicatedStorage.Decor.Rock:Clone()
-			r.Parent = workspace.Scenery
-			r.Size = Vector3.new(math.random(3, 6), math.random(3, 6), math.random(3, 6))
-			local colorScale = math.random(80, 200) --grayness
-			r.Color = Color3.fromRGB(colorScale, colorScale, colorScale)
-			local pos = helperFunctions.randomPointOnShoulderNearZ(z, 1, r.Size)
-			r:PivotTo(CFrame.new(pos) * CFrame.Angles(math.rad(math.random(0,359)), math.rad(math.random(0,359)), math.rad(math.random(0,359))))
-		end
-	end
-end]]
-
---[[function addObstacle()
-	local obstacleFrequency = {}
-	if biome == "Forest" then
-		obstacleFrequency = {["Arch"] = 3, ["Bush"] = 14, ["LogRamp"] = 5, ["Rock"] = 3, ["Stump"] = 6, 
-			["Tree"] = 10, ["TreePlatform"] = 2}
-	else
-		obstacleFrequency = {["LogRamp"] = 2, ["Rock"] = 1, ["LongLilypad"] = 10, ["FlatLog"] = 10}
-	end
-	
-	--use frequency to select the next obstacle
-	local totalFrequencies = 0
-	for obstacle, frequency in obstacleFrequency do
-		totalFrequencies += frequency
-	end
-	
-	local obstacleLane = math.random(1, 3)
-	local rollFrequency = math.random(1, totalFrequencies)
-	local currentFrequency = 0
-	local o --the obstacle object to be selected
-	for obstacle, frequency in obstacleFrequency do
-		currentFrequency += frequency or 1
-		if rollFrequency <= currentFrequency then
-			o = ReplicatedStorage.Obstacles[obstacle]:Clone()
-			--o = ReplicatedStorage.Obstacles.LogRamp:Clone() --for testing one obstacle only
-			break
-		end
-	end
-	
-	--place the chosen obstacle
-	o.Parent = workspace.PathParts
-	helperFunctions.setCollisionGroup(o, o.Name == "Arch" and "SlidingObstacle" or "Obstacle")
-	local part = o:IsA("Model") and o.PrimaryPart or o
-	local x = (obstacleLane - 2) * laneWidth
-	local y = part.Size.Y / 2 + .5 --add floor height
-	local z = nextObstacleAtZ + part.Size.Z / 2
-	local angleY = 0
-	--rotate some obstacles
-	if table.find({"Arch", "Tree", "Stump", "Bush", "Rock","LongLilypad", "FlatLog"}, o.Name) and math.random(1, 2) == 1 then --Arch tree can be flipped
-		angleY = 180
-	end
-	local angle = CFrame.Angles(0, math.rad(angleY), 0)
-	o:PivotTo(CFrame.new(Vector3.new(x, y, z)) * angle)
-	local distToNextObstacle = 30 + 40 * (1 - densityRating()) --with min of 20, you'd hit bushes behind trees
-	
-	--chain some obstacles
-	if biome == "Water" 
-		and table.find({"LongLilypad", "FlatLog"}, o.Name)
-		and table.find({"LongLilypad", "FlatLog"}, lastObstacleAdded) then
-		distToNextObstacle = 10 --size of the wedges since parts are spaced on the primary part
-	end
-	nextObstacleAtZ += part.Size.Z + distToNextObstacle
-
-	--put acorns on some obstacles
-	if (o.Name == "Arch" and math.random(1, 2) == 1)
-		or (o.Name == "LongLilypad" and math.random(1, 4) <= 3)
-	then
-		nextObstacleAtZ = helperFunctions.addAcorn(o.TopTouchArea.Position, nextObstacleAtZ)
-	end
-	
-	--put acorn next to some obstacles
-	if biome == "Forest" and math.random(1, 6) == 1 then
-		local leftMostOption = math.random(1, 2) == 1
-		local x = part.Position.X + laneWidth * (obstacleLane == 1 and (leftMostOption and 1 or 2) or obstacleLane == 2 and (leftMostOption and -1 or 1) or (leftMostOption and -2 or -1))
-		nextObstacleAtZ = helperFunctions.addAcorn(Vector3.new(x, 2.8, part.Position.Z), nextObstacleAtZ)
-	end
-
-
-	--task touch part listeners
-	if o.Name == "Arch" then
-		o.BranchTouchArea.Touched:Connect(function(hit)
-			if hit == hrp and not part:GetAttribute("Touched") then
-				part:SetAttribute("Touched", true)
-				updateTaskProgress(6, 1)
-				if o:FindFirstChild("BranchTouchArea") then
-					o.BranchTouchArea:Destroy()
-				end
-			end
-		end)
-		o.SlideTouchArea.Touched:Connect(function(hit)
-			if hit == hrp and not part:GetAttribute("Touched") then
-				part:SetAttribute("Touched", true)
-				slidUnderTrees += 1
-				if o:FindFirstChild("SlideTouchArea") then
-					o.SlideTouchArea:Destroy()
-				end
-				if slidUnderTrees == 2 then
-					updateTaskProgress(3, 2)
-				end
-			end
-		end)
-	elseif o.Name == "Bush" then
-		o.TopTouchArea.Touched:Connect(function(hit)
-			if hit == hrp and not part:GetAttribute("Touched") then
-				part:SetAttribute("Touched", true)
-				updateTaskProgress(4, 1)
-				if o:FindFirstChild("TopTouchArea") then
-					o.TopTouchArea:Destroy()
-				end
-			end
-		end)
-	elseif o.Name == "Tree" or o.Name == "TreePlatform" then
-		o.TopTouchArea.Touched:Connect(function(hit)
-			if hit == hrp and not part:GetAttribute("Touched") then
-				part:SetAttribute("Touched", true)
-				updateTaskProgress(5, 1)
-				if o:FindFirstChild("TopTouchArea") then
-					o.TopTouchArea:Destroy()
-				end
-			end
-		end)
-	end
-	
-	lastObstacleAdded = o.Name
-end]]
-
---[[function addAcorn(position: Vector3?) --optional position
-	local acornLane = math.random(1, 3)
-	local a = ReplicatedStorage.Acorn:Clone()
-	a.Parent = workspace.Scenery
-	local x = (acornLane - 2) * laneWidth
-	a.Position = position or Vector3.new(x, 4, nextObstacleAtZ)
-	a.Touched:Connect(function(hit)
-		if hit == hrp then
-			SoundService.Crunch2:Play()
-			addStamina(15)
-			a:Destroy()
-			ReplicatedStorage.Events.playerEarnedCoins:FireServer(clientUtil.addBonusToCoins(10))
-		end
-	end)
-	nextObstacleAtZ += position and 0 or 10 --don't extend if this was placed on an obstacle
-end]]
-
-function handleCollectibleTouched(collectible: Model, partName: string?)
+function handleCollectibleTouched(collectible: Model, partName: string?) --apply effects when a collectible item is touched
 	if collectible.Name == "Acorn" then
 		SoundService.Crunch2:Play()
 		local staminaToAdd = 15
@@ -656,7 +361,7 @@ end
 ReplicatedStorage.Events.collectibleTouchedRemote.OnClientEvent:Connect(handleCollectibleTouched)
 ReplicatedStorage.Events.collectibleTouched.Event:Connect(handleCollectibleTouched)
 
-function updatePlayerCollisionGroup() --should be called when you start/stop sliding/changing lanes
+function updatePlayerCollisionGroup() --should be called when you start/stop sliding/changing lanes. These control what types of obstacles the player can currently hit
 	if playerVerticalStatus == "Sliding" and changingLanes then
 		setPlayerCollisionGroup("PlayerSlidingAndChangingLanes")
 	elseif changingLanes then
@@ -668,13 +373,13 @@ function updatePlayerCollisionGroup() --should be called when you start/stop sli
 	end
 end
 
-function setPlayerCollisionGroup(group) --only change collision group if necessary
-	if hrp.CollisionGroup ~= group then
+function setPlayerCollisionGroup(group)
+	if hrp.CollisionGroup ~= group then --only change collision group if necessary
 		helperFunctions.setCollisionGroup(char, group)
 	end
 end
 
-function currentLaneX()
+function currentLaneX() --get the x coordinate of the current lane's center
 	return centerLaneX + (2 - lane) * laneWidth
 end
 
@@ -688,17 +393,17 @@ function togglePlayerFrozen(freeze)
 end
 
 function addStamina(addAmount)
-	if addAmount < 0 and table.find((clientUtil.PlayerData() or {}).purchasedItems or {}, 5) then
+	if addAmount < 0 and table.find((clientUtil.PlayerData() or {}).purchasedItems or {}, 5) then --check if player has item 5
 		addAmount *= .8 --lower stamina drain
 	end
 	
 	local previousStamina = stamina
-	stamina = math.clamp(stamina + addAmount, 0, maxStamina)
+	stamina = math.clamp(stamina + addAmount, 0, maxStamina) --add stamina within limits
 	
 	local yellowThreshold = .4 * maxStamina
 	local redThreshold = .2 * maxStamina
 	
-	if stamina > previousStamina then
+	if stamina > previousStamina then --show yellow/red border around screen as stamina gets dangerously low
 		clientUtil.toggleVignette(nil)
 	elseif stamina < redThreshold then
 		clientUtil.toggleVignette(Color3.fromHex("#dc4512"))
@@ -712,7 +417,7 @@ end
 RunService.Heartbeat:Connect(function(delta) --heartbeat is good for physics-based movement, raycasts, impulses
 	--record delta before processing other calculations
 	
-	if clientUtil.getInLobby() or not hrp then return end
+	if clientUtil.getInLobby() or not hrp then return end --ignore if player is respawning
 		
 	--drain or regen stamina
 	if not crashed and not clientUtil.getGamePaused() then
@@ -739,24 +444,8 @@ RunService.Heartbeat:Connect(function(delta) --heartbeat is good for physics-bas
 		if not clientUtil.getGamePaused() then
 			score += speed * delta
 		end
-		
-		--[[Left/Right if key is held
-		--this was causing weird issues when you hold both Left and Right and then quickly release one
-		local leftAction = actionInputBeingHeld("Left")
-		local rightAction = actionInputBeingHeld("Right")
-		if not (leftAction and rightAction) then --don't allow both to be held at once
-			if leftAction and tick() - leftAction.start > .5 then
-				addInputToQueue("Left", true)
-				activeInputs[leftAction] = nil
-			end
-			
-			if rightAction and tick() - rightAction.start > .5 then
-				addInputToQueue("Right", true)
-				activeInputs[rightAction] = nil
-			end
-		end]]
-		
-		--check if jump apex has been reached
+				
+		--check if jump apex has been reached by checking the last few hights that were recorded
 		if playerVerticalStatus == "Ascending"
 			and #lastHrpHeights == 3
 			and lastHrpHeights[1] < lastHrpHeights[2]
@@ -770,7 +459,7 @@ RunService.Heartbeat:Connect(function(delta) --heartbeat is good for physics-bas
 			end
 		end
 		
-		--track previous heights
+		--track previous heights to check apex with
 		table.insert(lastHrpHeights, hrp.Position.Y)
 		if #lastHrpHeights > 3 then
 			table.remove(lastHrpHeights, 1)
@@ -789,10 +478,9 @@ RunService.Heartbeat:Connect(function(delta) --heartbeat is good for physics-bas
 		local directionY = math.pi --180 degrees
 		local directionZ = 0
 		
-		if math.abs(differenceSideways) > .1 and laneChangeStartedCFrame then
-			--local pctCopmlete = math.clamp((hrp.Position.Z - laneChangeStartedCFrame.Position.Z) / laneWidth, 0, 1) --change denominator to adjust duration of lane change
-			local totalX = math.abs(currentLaneX() - laneChangeStartedCFrame.Position.X)
-			local alpha = math.clamp((currentLaneX() - hrp.Position.X) / totalX, -1, 1)
+		if math.abs(differenceSideways) > .1 and laneChangeStartedCFrame then --if we have distance to move and our starting position was recorded
+			local totalX = math.abs(currentLaneX() - laneChangeStartedCFrame.Position.X) --the total amount of movement that needed to be made for this lane change
+			local alpha = math.clamp((currentLaneX() - hrp.Position.X) / totalX, -1, 1)  --how far through the movement we are so far
 			
 			--adjust facing angle while changing lanes
 			if playerVerticalStatus == "Gliding" then
@@ -802,10 +490,7 @@ RunService.Heartbeat:Connect(function(delta) --heartbeat is good for physics-bas
 			end
 		end
 		
-		--update AlignOrientation. Tried only changing if needed using ToEulerAnglesXYZ, but the angles were coming out reversed and it didn't help efficiency.
-		hrp.AlignOrientation.Attachment1.CFrame = CFrame.Angles(0, directionY, directionZ)
-		--replaced 1/25 hrp:PivotTo(CFrame.new(Vector3.new(newX, hrp.Position.Y, hrp.Position.Z)) * direction)
-		
+		hrp.AlignOrientation.Attachment1.CFrame = CFrame.Angles(0, directionY, directionZ) --move players orientation towards this angle
 		
 		--show score
 		local scoreFrame = playerGui.ScreenGui.ScoreFrame
@@ -823,43 +508,12 @@ RunService.Heartbeat:Connect(function(delta) --heartbeat is good for physics-bas
 				addingBiomes = false
 			end)
 		end
-		--[[if horizon > lastPathEndsAtZ and not addingBiomes then
-			addingBiomes = true
-			biome = "Forest" --default biome is Forest
-			local biomeSections = math.random(2, 4)
-			
-			--alternate biomes
-			if speed > 100 and lastBiome == "Forest" and math.random(1, 4) == 1 then
-				biome = "Water"
-				biomeSections = math.random(1, 4)
-			elseif speed > 150 and lastBiome == "Forest" and math.random(1, 4) <= 1 then
-				biome = "Desert"
-				local endingZ = helperFunctions.generateDesertObstacles(nextObstacleAtZ)
-				biomeSections = math.ceil((endingZ - nextObstacleAtZ) / 300)
-				nextObstacleAtZ += biomeSections * 300 + 50
-			end
-			
-			if biome == "Forest" then
-				helperFunctions.addFlowerPatch(biome, lastPathEndsAtZ, biomeSections * 300, clientUtil.getSceneryEnabled())
-			end
-			
-			task.spawn(function() --don't block heartbeat while these generate
-				--generate entire biomes at once to control duration
-				for x = 1, biomeSections do
-					nextObstacleAtZ, lastObstacleAdded, lastPathEndsAtZ = helperFunctions.addPath(biome, centerLaneX, lastPathEndsAtZ, nextObstacleAtZ, lastObstacleAdded, runStartTime, clientUtil.getSceneryEnabled(), tutorialMode)
-					task.wait()
-				end
-				addingBiomes = false
-			end)
-
-			lastBiome = biome
-		end]]
 	end
 
 	makePassedPartsInvisible()
 end)
 
-function actionInputBeingHeld(action)
+function actionInputBeingHeld(action) --check if the input for a particular action is being held
 	for _, i in activeInputs do
 		if i.action == action then
 			return i
@@ -867,7 +521,7 @@ function actionInputBeingHeld(action)
 	end
 end
 
-function clearOppositeActiveInputs(action)
+function clearOppositeActiveInputs(action) --clears the cache of active inputs that are no longer valid
 	local opp = getActionOpposite(action)
 	for i, input in activeInputs do
 		if input.action == opp then
@@ -892,7 +546,7 @@ RunService.RenderStepped:Connect(function() --RenderStepped good for handling us
 			--entry time makes input expire when player is not moving for tutorial instructions
 			if z > entry.z + inputActionLength[entry.action] or tick() - entry.time > 1 then
 				table.remove(inputQueue, i)
-			elseif entry.action == "Up" then
+			elseif entry.action == "Up" then --handle up input starting or stopping
 				if entry.begin then
 					if handleJumpKeyPressed() then
 						table.remove(inputQueue, i)
@@ -921,8 +575,6 @@ RunService.RenderStepped:Connect(function() --RenderStepped good for handling us
 					elseif isDiagonalClear(false) then
 						changeLane(false)
 						table.remove(inputQueue, i)
-					else
-						--print("turn blocked")
 					end
 				else
 					table.remove(inputQueue, i)
@@ -934,8 +586,6 @@ RunService.RenderStepped:Connect(function() --RenderStepped good for handling us
 					elseif isDiagonalClear(true) then
 						changeLane(true)
 						table.remove(inputQueue, i)
-					else
-						--print("turn blocked")
 					end
 				else
 					table.remove(inputQueue, i)
@@ -947,9 +597,9 @@ RunService.RenderStepped:Connect(function() --RenderStepped good for handling us
 	if hrp and hrp:FindFirstChild("Speedlines") then --facing the camera
 		local minSpeed = 200
 		local maxSpeed = 300
-		hrp.Speedlines.ParticleEmitter.Enabled = speed > minSpeed and not crashed and not clientUtil.getInLobby() and not clientUtil.getGamePaused()
-		local offset = speed > maxSpeed and 8 or math.map(speed, minSpeed, maxSpeed, 3, 8) --can go from about 3 to 8
-		hrp.Speedlines:PivotTo(CFrame.new(camera.CFrame.Position + camera.CFrame.LookVector * offset) * camera.CFrame.Rotation)
+		hrp.Speedlines.ParticleEmitter.Enabled = speed > minSpeed and not crashed and not clientUtil.getInLobby() and not clientUtil.getGamePaused() --show speed lines at high speeds
+		local offset = speed > maxSpeed and 8 or math.map(speed, minSpeed, maxSpeed, 3, 8) --can go from about 3 to 8 to control how intense the lines look
+		hrp.Speedlines:PivotTo(CFrame.new(camera.CFrame.Position + camera.CFrame.LookVector * offset) * camera.CFrame.Rotation) --place the speed line emitter in front of player's camera
 	end
 end)
 
@@ -967,7 +617,7 @@ function makePassedPartsInvisible() --make some obstacles semitransparent as you
 	end
 end
 
-function toggleCameraConnection(enabled)
+function toggleCameraConnection(enabled) --cached connection to help move the camera every frame during a run
 	if enabled then
 		cameraConnection = RunService:BindToRenderStep("FollowCamera", Enum.RenderPriority.Camera.Value, function()
 			if not hrp or clientUtil.getInLobby() then return end
@@ -981,7 +631,7 @@ function toggleCameraConnection(enabled)
 	end
 end
 
-function getLaneOfPosition(pos: Vector3)
+function getLaneOfPosition(pos: Vector3) --check what lane the given position is in
 	local dist1 = math.abs(pos.X - (centerLaneX + laneWidth))
 	local dist2 = math.abs(pos.X - centerLaneX)
 	local dist3 = math.abs(pos.X - (centerLaneX - laneWidth))
@@ -994,15 +644,15 @@ function getLaneOfPosition(pos: Vector3)
 	end
 end
 
-function reviveApply()
+function reviveApply() --let the player use a revive
 	if not waitForReviveDecisionStartedTime or clientUtil.getInLobby() then return end
 	revivePurchasePromptTime = nil
 	
 	--if player has revives, consume one
-	if table.find((clientUtil.PlayerData() or {}).purchasedItems or {}, 12) then
+	if table.find((clientUtil.PlayerData() or {}).purchasedItems or {}, 12) then --item 12 is a revive
 		waitForReviveDecisionStartedTime = nil
 
-		local consumed = ReplicatedStorage.Functions.consumeItem:InvokeServer(12)
+		local consumed = ReplicatedStorage.Functions.consumeItem:InvokeServer(12) --this must be verified by the server
 		if consumed then
 			revivedTime = tick()
 			crashed = false
@@ -1011,7 +661,7 @@ function reviveApply()
 			local reviveFrame = playerGui:WaitForChild("ScreenGui"):WaitForChild("ReviveFrame")
 			reviveFrame.Visible = false
 			
-			hrp.LinearVelocityZ.Enabled = true
+			hrp.LinearVelocityZ.Enabled = true --re-enable physics controls to start moving again
 			hrp.LinearVelocityY.Enabled = true
 			hrp.AlignOrientation.Enabled = true
 			hrp.AlignPositionX.Enabled = true
@@ -1025,18 +675,18 @@ function reviveApply()
 			end
 			
 			task.delay(reviveInvincibilityDuration, function()
-				revivedTime = nil
+				revivedTime = nil --reset after a delay
 			end)
 		else
 			reviveDecline() --last resort fail if couldn't consume item
 		end
 	else
 		revivePurchasePromptTime = tick()
-		MarketplaceService:PromptProductPurchase(player, 3538063996)		
+		MarketplaceService:PromptProductPurchase(player, 3538063996) --prompt a revive purchase if they have none	
 	end
 end
 
-function reviveDecline()
+function reviveDecline() --handle player deciding not to use a revive
 	if not waitForReviveDecisionStartedTime then return end
 	
 	local reviveFrame = playerGui:WaitForChild("ScreenGui"):WaitForChild("ReviveFrame")
@@ -1051,7 +701,7 @@ end
 function crash() --set crashedObjectName before calling
 	if crashed then return end
 	crashed = true
-	hrp.LinearVelocityZ.Enabled = false
+	hrp.LinearVelocityZ.Enabled = false --disable physics controls
 	hrp.LinearVelocityY.Enabled = false
 	hrp.AlignOrientation.Enabled = false
 	hrp.AlignPositionX.Enabled = false
@@ -1075,11 +725,11 @@ function crash() --set crashedObjectName before calling
 		local progress: Frame = reviveFrame:WaitForChild("ProgressBar")
 		reviveFrame.Visible = true
 		progress.Size = UDim2.new(0.9, 0, 0, 3)
-		progress:TweenSize(UDim2.new(0, 0, 0, 3), Enum.EasingDirection.Out, Enum.EasingStyle.Linear, reviveDesisionTime)
+		progress:TweenSize(UDim2.new(0, 0, 0, 3), Enum.EasingDirection.Out, Enum.EasingStyle.Linear, reviveDesisionTime) --drain time left bar at a constant rate
 
 		task.delay(reviveDesisionTime, function()
 			if not revivePurchasePromptTime then
-				reviveDecline() --decline if player didn't make a choice
+				reviveDecline() --decline if player didn't make a choice in time
 			end
 		end)
 	end
@@ -1090,11 +740,6 @@ function checkIfPlayerCrashed(delta)
 	
 	local overlapParams = OverlapParams.new()
 	local instances = {}
-	--[[for _, obstacle in workspace.PathParts:GetChildren() do 
-		if obstacle.Name ~= "LogRamp" then
-			table.insert(instances, obstacle) 
-		end
-	end]]
 	--list of collidable base parts (no meshes used). Ignore parts with noCrash tag like ramps unless I stop.
 	for _, obstaclePart in workspace.PathParts:GetDescendants() do 
 		if obstaclePart:IsA("BasePart") and
@@ -1102,19 +747,19 @@ function checkIfPlayerCrashed(delta)
 			table.insert(instances, obstaclePart)
 		end
 	end
-	overlapParams.FilterDescendantsInstances = instances
+	overlapParams.FilterDescendantsInstances = instances --only these parts are checked
 	overlapParams.FilterType = Enum.RaycastFilterType.Include
-	overlapParams.RespectCanCollide = true
+	overlapParams.RespectCanCollide = true --ignore parts the player can't collide with right now
 	overlapParams.CollisionGroup = hrp.CollisionGroup
 	
-	local distance = speed * delta + 2 --buffer. 1 was too small for the tutorial bush
-	local boxSize = Vector3.new(2, 2, distance)
-	local boxCFrame = CFrame.new(hrp.Position + Vector3.new(0, 0, boxSize.Z / 2))
+	local distance = speed * delta + 2 --buffer
+	local boxSize = Vector3.new(2, 2, distance) --size of area to check
+	local boxCFrame = CFrame.new(hrp.Position + Vector3.new(0, 0, boxSize.Z / 2)) --use position and size to create the CFrame
 	local parts = workspace:GetPartBoundsInBox(
 		boxCFrame,
 		boxSize,
 		overlapParams
-	)
+	) --check for eligible parts in the specified area
 	
 	if #parts > 0 then
 		if parts[1].Parent.Name == "Bush" and playerVerticalStatus == "Ascending" then
@@ -1124,21 +769,7 @@ function checkIfPlayerCrashed(delta)
 		
 		--check for held lane changes
 		local diverting = false
-		--[[ turned off diverting feature because it can be abused by holding one direction and toggling the other
-		local leftAction = actionInputBeingHeld("Left")
-		local rightAction = actionInputBeingHeld("Right")
-		if not (leftAction and rightAction) then --don't allow both to be held at once
-			if leftAction and lane > 1 then
-				addInputToQueue("Left", true)
-				activeInputs[leftAction] = nil
-				diverting = true
-			elseif rightAction and lane < 3 then
-				addInputToQueue("Right", true)
-				activeInputs[rightAction] = nil
-				diverting = true
-			end	
-		end]]
-		
+				
 		if (diverting and not tutorialMode) or (revivedTime and tick() - revivedTime < reviveInvincibilityDuration) then --no diverting during tutorial
 			for _, part in parts do
 				if not CollectionService:HasTag(part, "noCrash") then --ramps remain collidable or you would fall through them
@@ -1158,7 +789,7 @@ function checkIfPlayerCrashed(delta)
 	end
 end
 
-function isPartObstacle(part)
+function isPartObstacle(part) --check parents of part to see if it's a descendant of PathParts
 	while part.Parent do
 		if part.Parent == workspace.PathParts then
 			return true
@@ -1178,19 +809,19 @@ function isDiagonalClear(right: boolean)
 	
 	local overlapParams = OverlapParams.new()
 	local instances = {}
-	for _, value in workspace.PathParts:GetChildren() do table.insert(instances, value) end
+	for _, value in workspace.PathParts:GetChildren() do table.insert(instances, value) end --get a list of current path parts
 	overlapParams.FilterDescendantsInstances = instances
-	overlapParams.FilterType = Enum.RaycastFilterType.Include
-	overlapParams.RespectCanCollide = true
+	overlapParams.FilterType = Enum.RaycastFilterType.Include  --only check these parts in the list
+	overlapParams.RespectCanCollide = true --ignore parts the player can't collide with right now
 	overlapParams.CollisionGroup = hrp.CollisionGroup
-	overlapParams.MaxParts = 1
+	overlapParams.MaxParts = 1 --I only care if one was found or not
 	local x = (right and -1 or 1) * laneWidth
 	local z = (laneWidth / 2 + 1) / 2 --center 2.5 studs ahead with 5 stud length
 	local diagOffset = Vector3.new(x, 0, z)
 	local cf = CFrame.new(hrp.Position + diagOffset) --rotation doesn't matter
 	local size = Vector3.new(laneWidth - 2, 2, laneWidth / 2 + 1) --if you look ahead to prevent hitting a bush right after changing lanes, you also can't get onto low ramps
-	local parts = workspace:GetPartBoundsInBox(cf, size, overlapParams)
-	return #parts == 0
+	local parts = workspace:GetPartBoundsInBox(cf, size, overlapParams) --check for parts using this CFrame and size
+	return #parts == 0 --just check if a part was found or not
 end
 
 function changeLane(right: boolean)
@@ -1210,7 +841,7 @@ function changeLane(right: boolean)
 	previousLane = lane
 	if lane < 3 and right then
 		lane += 1
-		laneChangeStartedCFrame = hrp.CFrame
+		laneChangeStartedCFrame = hrp.CFrame --record where the player started this movement
 		alignPlayerToLane()
 	elseif lane > 1 and not right then
 		lane -= 1
@@ -1219,12 +850,12 @@ function changeLane(right: boolean)
 	end
 end
 
-function alignPlayerToLane()
+function alignPlayerToLane() --use AlignPosition to move player towards the center of the lane they should be in
 	hrp.AlignPositionX.Attachment1.Position = Vector3.new(currentLaneX(), 0, 0)
 end
 
-function getSwipeDirection(input) --for touch and gamepad
-	local delta = input.UserInputType == Enum.UserInputType.Touch and input.delta or input.position
+function getSwipeDirection(input) --for touch and gamepad to detect if the movement is enough in a particular direction
+	local delta = input.UserInputType == Enum.UserInputType.Touch and input.delta or input.position --get distance moved so far
 	if input.UserInputType == Enum.UserInputType.Gamepad1 then
 		delta = Vector3.new(delta.X, -delta.Y, 0) --gamepad Y is opposite of touch
 	end
@@ -1236,7 +867,7 @@ function getSwipeDirection(input) --for touch and gamepad
 		return nil
 	end
 
-	if math.abs(delta.X) > math.abs(delta.Y) * DOMINANCE then
+	if math.abs(delta.X) > math.abs(delta.Y) * DOMINANCE then --check if the swipe is dominant in one particular direction
 		if delta.X > 0 then
 			return Enum.SwipeDirection.Right
 		else
@@ -1266,12 +897,9 @@ function setVelocityY(force)
 			toggleVerticalVelocity(0)
 		end
 	end)
-	
-	--old method: shoots you up if you jump while hitting a bush because it adds the force to the current velocity
-	--hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, force, hrp.AssemblyLinearVelocity.Z)
 end
 
-function toggleFastFalling(enabled)
+function toggleFastFalling(enabled) --toggle if player should be falling more quickly
 	if fastFalling == enabled then return end --debounce
 	if enabled then
 		fastFalling = true
@@ -1285,7 +913,7 @@ function toggleFastFalling(enabled)
 	end
 end
 
-function downKeyPressed()
+function downKeyPressed() --handle the down key being pressed
 	if crashed then return end
 	if tutorialMode and requiredControl and requiredControl.requiredControl ~= "Down" then return end
 
@@ -1343,12 +971,12 @@ function isPlayerInsidePart(partName) --for example, sliding through Arch
 	local instances = {}
 	for _, value in workspace.PathParts:GetChildren() do table.insert(instances, value) end
 	overlapParams.FilterDescendantsInstances = instances
-	overlapParams.FilterType = Enum.RaycastFilterType.Include
-	overlapParams.RespectCanCollide = false
-	local parts = workspace:GetPartBoundsInBox(hrp.CFrame, hrp.Size, overlapParams)
+	overlapParams.FilterType = Enum.RaycastFilterType.Include --only look through these parts
+	overlapParams.RespectCanCollide = false --include parts player can't hit
+	local parts = workspace:GetPartBoundsInBox(hrp.CFrame, hrp.Size, overlapParams) --get a list of parts at this CFrame within the size
 	for _, part in parts do
 		if part.Name == partName then
-			return true
+			return true --player is inside this part's bounding box
 		end
 	end
 end
@@ -1375,7 +1003,7 @@ function handleJumpKeyPressed()
 		togglePlayerFrozen(false)
 		playerGui:WaitForChild("ScreenGui"):WaitForChild("TutorialInstructionFrame").Visible = false
 		if not enforcingHeldControlForTutorial then
-			task.spawn(function()
+			task.spawn(function() --spawn a task so it doesn't block the main thread. This is to force the player to keep trying until they complete the glide by holding the jump key
 				if requiredControl.holdTillZ then
 					enforcingHeldControlForTutorial = true
 					while hrp and requiredControl and hrp.Position.Z >= requiredControl.z and hrp.Position.Z < requiredControl.holdTillZ do
@@ -1394,27 +1022,27 @@ function handleJumpKeyPressed()
 		end
 	end
 
-	if isNewPlayerVerticalStatusEligible("Ascending") then
+	if isNewPlayerVerticalStatusEligible("Ascending") then --jump if eligible
 		return setPlayerVerticalStatus("Ascending")
-	elseif playerVerticalStatus == "Falling" then
+	elseif playerVerticalStatus == "Falling" then --start gliding if player was falling
 		return setPlayerVerticalStatus("Gliding")
 	end
 end
 
-function handleJumpKeyReleased()
+function handleJumpKeyReleased() --stop gliding when key is released
 	if playerVerticalStatus == "Gliding" then
 		return setPlayerVerticalStatus("Falling")
 	end
 end
 
-function areActionsOpposite(a, b)
+function areActionsOpposite(a, b) --check if these two inputs are opposites of each other
 	if (a == "Up" and b == "Down") or (a == "Down" and b == "Up")
 		or (a == "Right" and b == "Left") or (a == "Left" and b == "Right") then
 		return true
 	end
 end
 
-function getActionOpposite(a)
+function getActionOpposite(a) --determine the opposite action
 	if a == "Up" then
 		return "Down"
 	elseif a == "Down" then
@@ -1426,7 +1054,7 @@ function getActionOpposite(a)
 	end
 end
 
-function addInputToQueue(action, begin)
+function addInputToQueue(action, begin) --queue up inputs so they are handled in order once they become eligible to carry out
 	--clear previous actions when starting a new input
 	if begin then
 		for i, input in inputQueue do
@@ -1438,21 +1066,16 @@ function addInputToQueue(action, begin)
 				return
 			end
 		end
-				
-		if action == "Left" or action == "Right" then
-			--clearOppositeActiveInputs(action) --ie I press and hold Left then press Right. It shouldn't go left again after a delay.
-		end
 	end
 	
 	if not crashed and hrp and not clientUtil.getGamePaused()
 		and not (tutorialMode and requiredControl == nil and begin) --don't start input unless it's required
 	then
-		table.insert(inputQueue, {action = action, begin = begin, z = hrp.Position.Z, time = tick()})
+		table.insert(inputQueue, {action = action, begin = begin, z = hrp.Position.Z, time = tick()}) --track metadata about the input
 	end
 end
 
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-	--print(gameProcessedEvent, input.KeyCode, input.UserInputType)
 	if gameProcessedEvent and input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.Gamepad1 then return end
 	if crashed or not hrp then return end
 	
@@ -1491,11 +1114,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 end)
 
 UserInputService.InputChanged:Connect(function(input, gameProcessedEvent)
-	--[[if input.Position.Magnitude > .1 and input.UserInputType == Enum.UserInputType.Gamepad1 
-		and input.KeyCode == Enum.KeyCode.Thumbstick1
-	then
-		print(getSwipeDirection(input))
-	end]]
 	--reset thumbstickDirection each time it's released
 	if input.UserInputType == Enum.UserInputType.Gamepad1 and input.KeyCode == Enum.KeyCode.Thumbstick1 then
 		if thumbstickDirection then
@@ -1514,7 +1132,7 @@ UserInputService.InputChanged:Connect(function(input, gameProcessedEvent)
 				
 				if crashed or clientUtil.getGamePaused() then return end
 				
-				if swipeDirection == Enum.SwipeDirection.Right then
+				if swipeDirection == Enum.SwipeDirection.Right then --record the input action once it has moved far enough to be recognised
 					addInputToQueue("Right", true)
 					activeInputs[input].action = "Right"
 				elseif swipeDirection == Enum.SwipeDirection.Left then
@@ -1567,60 +1185,31 @@ end)
 UserInputService.InputEnded:Connect(function(input, gameProcessedEvent)
 	if gameProcessedEvent and input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.Gamepad1 then return end
 	
-	if activeInputs[input] and activeInputs[input].action then
+	if activeInputs[input] and activeInputs[input].action then --add the end of this keypress to the queue to be handled
 		addInputToQueue(activeInputs[input].action, false)
 	end
 	activeInputs[input] = nil --cleanup active input tracking
 end)
 
-local function handleArrowKeyInput(actionName, inputState, inputObject)
-	if actionName == "BlockArrowCamera" then
-		if clientUtil.getInLobby() then
-			return Enum.ContextActionResult.Pass
-		elseif inputState == Enum.UserInputState.Begin then
-			activeInputs[actionName] = {}
-			-- Check if the input is a key press and specifically the Right Arrow
-	 		if inputObject.KeyCode == Enum.KeyCode.Right then
-				addInputToQueue("Right", true)
-				activeInputs[actionName].action = "Right"
-				return Enum.ContextActionResult.Sink
-			elseif inputObject.KeyCode == Enum.KeyCode.Left then
-				addInputToQueue("Left", true)
-				activeInputs[actionName].action = "Left"
-				return Enum.ContextActionResult.Sink
-			end
-		elseif inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
-			if activeInputs[actionName] and activeInputs[actionName].action then
-				addInputToQueue(activeInputs[actionName].action, false)
-			end
-			activeInputs[actionName] = nil
-			return Enum.ContextActionResult.Sink
-		else
-			return Enum.ContextActionResult.Pass -- Continue processing if not handled here
-		end
-	end
-end
-
-local function handleSpaceKeyInput(actionName, inputState, inputObject)
+local function handleSpaceKeyInput(actionName, inputState, inputObject) --this is used instead of the default handling
 	if actionName == "BlockSpaceToJump" then
 		if clientUtil.getInLobby() then
-			return Enum.ContextActionResult.Pass
+			return Enum.ContextActionResult.Pass --let the game handle it normally
 		elseif inputState == Enum.UserInputState.Begin then
 			activeInputs[actionName] = {}
 			addInputToQueue("Up", true)
 			activeInputs[actionName].action = "Up"
-		elseif inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+		elseif inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then --when the spacebar is being released
 			if activeInputs[actionName] and activeInputs[actionName].action then
 				addInputToQueue(activeInputs[actionName].action, false)
 			end
 			activeInputs[actionName] = nil
 		end
-		return Enum.ContextActionResult.Sink
+		return Enum.ContextActionResult.Sink --consume the input to prevent default processing
 	end
 end
 
---ContextActionService:BindActionAtPriority("BlockArrowCamera", handleArrowKeyInput, false, Enum.ContextActionPriority.High.Value + 1, Enum.KeyCode.Left, Enum.KeyCode.Right)
-ContextActionService:BindActionAtPriority("BlockSpaceToJump", handleSpaceKeyInput, false, Enum.ContextActionPriority.High.Value + 1, Enum.KeyCode.Space)
+ContextActionService:BindActionAtPriority("BlockSpaceToJump", handleSpaceKeyInput, false, Enum.ContextActionPriority.High.Value + 1, Enum.KeyCode.Space) --override the default action when pressing space
 
 function toggleVerticalVelocity(strength: number) 
 	--constant downward slope that is only applied while gliding or fast falling. studs per second
@@ -1660,7 +1249,7 @@ function beginTutorial()
 			frame.Visible = false
 		else --player reached checkpoint and new control is assigned
 			if tutorialCheckpoints[tutorialCheckpoint].instruction == "Done" then --finished tutorial
-				ReplicatedStorage.Functions.playerCompletedTutorial:InvokeServer()
+				ReplicatedStorage.Functions.playerCompletedTutorial:InvokeServer() --tell the server that we finished
 				tutorialMode = false
 				toggleRunUIs()
 			else
@@ -1672,25 +1261,6 @@ function beginTutorial()
 		end
 	end
 end
-
---[[function getHeightFromGround() --ranges from about 6 to 12, but could be player-specific
-	local rayOrigin = hrp.Position
-	local rayDirection = Vector3.new(0, -500, 0) -- cast downward 500 studs
-
-	local raycastParams = RaycastParams.new()
-	local instances = {}
-	for _, value in workspace.PathParts:GetChildren() do table.insert(instances, value) end
-	raycastParams.FilterDescendantsInstances = instances
-	raycastParams.FilterType = Enum.RaycastFilterType.Include
-	raycastParams.RespectCanCollide = true
-	raycastParams.IgnoreWater = true
-
-	local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-
-	if result then
-		return (rayOrigin - result.Position).Magnitude
-	end
-end]]
 
 function playAnimation(animation)
 	if not crashed or animation == "FallOver" then --you can only fall while crashed
@@ -1706,7 +1276,7 @@ function playAnimation(animation)
 		if animation == "FallOver" then --it's 4 seconds long
 			task.delay(3, function()
 				if track.IsPlaying then
-					track:AdjustSpeed(0)
+					track:AdjustSpeed(0) --pause anim before it ends
 				end
 			end)
 		end
@@ -1714,16 +1284,16 @@ function playAnimation(animation)
 end
 
 function getOrLoadTrack(animation)
-	while not humanoid do task.wait(.1) end
-	if animTracks[animation] then return animTracks[animation] end
+	while not humanoid do task.wait(.1) end --wait if player is respawning
+	if animTracks[animation] then return animTracks[animation] end --use cached version if there is one
 	local anim = Instance.new("Animation")
 	anim.AnimationId = anims[animation]
-	local track = humanoid:LoadAnimation(anim)
+	local track = humanoid:LoadAnimation(anim) --create an animation track reference and save it for later
 	animTracks[animation] = track
 	return track
 end
 
-function preloadAnimTracks()
+function preloadAnimTracks() --pre-load the tracks so they can be started on demand
 	for k, v in pairs(anims) do
 		getOrLoadTrack(k)
 	end
@@ -1733,9 +1303,9 @@ function closeEyes(instant: boolean) --wait for eyes to close before returning u
 	local frame = playerGui:WaitForChild("EyeCloseGui"):WaitForChild("Frame")
 	local t = frame.Top
 	local b = frame.Bottom
-	t.Position = UDim2.new(.5, 0, -1, 0)
+	t.Position = UDim2.new(.5, 0, -1, 0) --starting positions of top and bottom half
 	b.Position = UDim2.new(.5, 0, 1, 0)
-	local tEndPosition = UDim2.new(.5, 0, -.35, 0)
+	local tEndPosition = UDim2.new(.5, 0, -.35, 0) --where they will tween to
 	local bEndPosition = UDim2.new(.5, 0, 0.35, 0)
 	if instant then
 		t.Position = tEndPosition
@@ -1744,16 +1314,16 @@ function closeEyes(instant: boolean) --wait for eyes to close before returning u
 	else
 		local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 1, true)
 		local tweenTop = TweenService:Create(t, tweenInfo, {Position = UDim2.new(.5, 0, -.6, 0)})
-		local tweenBottom = TweenService:Create(b, tweenInfo, {Position = UDim2.new(.5, 0, .6, 0)})
+		local tweenBottom = TweenService:Create(b, tweenInfo, {Position = UDim2.new(.5, 0, .6, 0)}) --tween the frames to their new position using a sine function at the beginning and end. Reverse is enabled so that they begin to bounce back.
 		frame.Visible = true
 		tweenTop:Play()
 		tweenBottom:Play()
 		task.wait(1.35)
-		tweenTop:Pause()
+		tweenTop:Pause() --stop this tween and start the next one as they are bouncing back
 		tweenBottom:Pause()
 	
 		tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-		tweenTop = TweenService:Create(t, tweenInfo, {Position = UDim2.new(.5, 0, -.35, 0)})
+		tweenTop = TweenService:Create(t, tweenInfo, {Position = UDim2.new(.5, 0, -.35, 0)}) --tween the frames to their next position
 		tweenBottom = TweenService:Create(b, tweenInfo, {Position = UDim2.new(.5, 0, 0.35, 0)})
 		tweenTop:Play()
 		tweenBottom:Play()
@@ -1767,18 +1337,15 @@ function openEyes()
 	local t = frame.Top
 	local b = frame.Bottom
 	local targetTopPosition = UDim2.new(.5, 0, -1, 0)
-	--[[if t.Position == targetTopPosition then return end --don't open again if already open
-	t.Position = UDim2.new(.5, 0, -.35, 0)
-	b.Position = UDim2.new(.5, 0, 0.35, 0)]]
 	
 	local tweenInfo = TweenInfo.new(.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 	local tweenTop = TweenService:Create(t, tweenInfo, {Position = targetTopPosition})
-	local tweenBottom = TweenService:Create(b, tweenInfo, {Position = UDim2.new(.5, 0, 1, 0)})
+	local tweenBottom = TweenService:Create(b, tweenInfo, {Position = UDim2.new(.5, 0, 1, 0)}) --similar to closing except they open in one smooth motion
 	tweenTop:Play()
 	tweenBottom:Play()
 end
 
-task.spawn(function()
+task.spawn(function() --spawn a constant loop that can perform needed actions 
 	while task.wait(1) do
 		if not clientUtil.getGamePaused() and not clientUtil.getInLobby() and not tutorialMode and not crashed then
 			--accelerate speed at a diminishing rate
@@ -1806,7 +1373,6 @@ end
 function setPlayerVerticalStatus(newStatus) --Running, Ascending, Falling, Gliding, Sliding
 	if playerVerticalStatus == newStatus and newStatus ~= "Running" then return end --Running allowed for beginning of new rounds
 	if not isNewPlayerVerticalStatusEligible(newStatus) then 
-		--print(playerVerticalStatus," to ", newStatus, "rejected", inAir, tick() - materialChangedTime)
 		return --usually happens right when you crash
 	end
 	
@@ -1838,7 +1404,7 @@ function setPlayerVerticalStatus(newStatus) --Running, Ascending, Falling, Glidi
 		humanoid:ChangeState(Enum.HumanoidStateType.Physics) 
 		setVelocityY(jumpVelocity)
 		task.delay(.1, function() --wait to become airborne
-			humanoid:ChangeState(Enum.HumanoidStateType.Running) 
+			humanoid:ChangeState(Enum.HumanoidStateType.Running)  --set back to default after a short delay
 		
 			--revert if player fails to become airborne. For example down key pressed before ascent got off ground
 			if playerVerticalStatus == "Ascending" and not inAir then
@@ -1899,14 +1465,14 @@ function handlePlayerCharAdded(player, character)
 	humanoid = char:WaitForChild("Humanoid")
 	humanoid.WalkSpeed = 32
 	
-	humanoid:GetPropertyChangedSignal("FloorMaterial"):Connect(function()
+	humanoid:GetPropertyChangedSignal("FloorMaterial"):Connect(function() --check whenever the material the player is standing on changes
 		if clientUtil.getInLobby() then return end
 		--ground is Plastic
 		onRamp = humanoid.FloorMaterial == Enum.Material.Carpet --unique material to differentiate from other parts
 		
 		if inAir ~= (humanoid.FloorMaterial == Enum.Material.Air) then --going from plastic to plaster doesn't count
-			inAir = humanoid.FloorMaterial == Enum.Material.Air
-			materialChangedTime = tick()
+			inAir = humanoid.FloorMaterial == Enum.Material.Air --check if the player is in the air
+			materialChangedTime = tick() --track when it changed
 			if inAir then
 				if actionInputBeingHeld("Up") then
 					setPlayerVerticalStatus("Ascending")
@@ -1919,7 +1485,7 @@ function handlePlayerCharAdded(player, character)
 		end
 	end)
 		
-	hrp.Touched:Connect(function(hit)
+	hrp.Touched:Connect(function(hit) --check whenever anything touches the player
 		if hit.Name == "KillBrick" and not clientUtil.getInLobby() then
 			crashedObjectName = hit.Parent.Name
 			crash()
@@ -1930,18 +1496,18 @@ function handlePlayerCharAdded(player, character)
 	preloadAnimTracks()
 		
 	--attach constraints
-	local lv = Instance.new("LinearVelocity", hrp)
+	local lv = Instance.new("LinearVelocity", hrp) --this is used for gliding down at a constant rate
 	lv.Name = "LinearVelocityY"
 	local lvAttachment = Instance.new("Attachment", hrp)
 	lvAttachment.WorldPosition = hrp.Position
 	lv.Attachment0 = lvAttachment
-	lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
+	lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Line --this only applies to one axis so it doesn't conflict with the other LinearVelocity objects
 	lv.LineDirection = Vector3.new(0, 1, 0)
 	lv.LineVelocity = 0 --Target velocity
-	lv.MaxForce = 1e6
-	lv.Enabled = false
+	lv.MaxForce = 1e6 --needs to be strong to go up ramps etc.
+	lv.Enabled = false --only enabled when needed during a run
 	
-	local lvZ = Instance.new("LinearVelocity", hrp)
+	local lvZ = Instance.new("LinearVelocity", hrp) --this will keep the player moving forward at a constant rate
 	lvZ.Name = "LinearVelocityZ"
 	local lvZAttachment = Instance.new("Attachment", hrp)
 	lvZAttachment.WorldPosition = hrp.Position
@@ -1952,33 +1518,33 @@ function handlePlayerCharAdded(player, character)
 	lvZ.MaxForce = 1e6
 	lvZ.Enabled = false
 	
-	local ao = Instance.new("AlignOrientation", hrp)
+	local ao = Instance.new("AlignOrientation", hrp) --this rotates the player towards the direction they should be facing
 	ao.Name = "AlignOrientation"
 	local ao0 = Instance.new("Attachment", hrp)
 	ao0.WorldCFrame = hrp.CFrame
 	ao.Attachment0 = ao0
-	local ao1 = Instance.new("Attachment", workspace.StartAnchor)
+	local ao1 = Instance.new("Attachment", workspace.StartAnchor) --direction is in relation to this anchored part
 	ao.Attachment1 = ao1
-	ao1.WorldCFrame = workspace.StartAnchor.CFrame
+	ao1.WorldCFrame = workspace.StartAnchor.CFrame --orientation is in reference to the world
 	ao.MaxTorque = 1e6
 	ao.MaxAngularVelocity = 50
-	ao.Responsiveness = 100
+	ao.Responsiveness = 100 --this affects how quickly they move
 	ao.Enabled = false
 	
-	local ap = Instance.new("AlignPosition", hrp)
+	local ap = Instance.new("AlignPosition", hrp) --this moves the player to the lane they should be in
 	ap.Name = "AlignPositionX"
 	local ap0 = Instance.new("Attachment", hrp)
 	ap0.WorldCFrame = hrp.CFrame
 	ap.Attachment0 = ap0
-	local ap1 = Instance.new("Attachment", workspace.StartAnchor)
+	local ap1 = Instance.new("Attachment", workspace.StartAnchor) --in relation to anchored part
 	ap.Attachment1 = ap1
 	ap.ForceLimitMode = Enum.ForceLimitMode.PerAxis
-	ap.MaxAxesForce = Vector3.new(1e5, 0, 0)
+	ap.MaxAxesForce = Vector3.new(1e5, 0, 0) --only applies to horizontal movement
 	ap.Responsiveness = 50
-	ap.ApplyAtCenterOfMass = true
+	ap.ApplyAtCenterOfMass = true --prevents rotational forces
 	ap.Enabled = false
 	
-	local apZ = Instance.new("AlignPosition", hrp)
+	local apZ = Instance.new("AlignPosition", hrp) --this moves the player forward
 	apZ.Name = "AlignPositionZ"
 	local ap0 = Instance.new("Attachment", hrp)
 	ap0.WorldCFrame = hrp.CFrame
@@ -1986,19 +1552,19 @@ function handlePlayerCharAdded(player, character)
 	local ap1 = Instance.new("Attachment", workspace.StartAnchor)
 	apZ.Attachment1 = ap1
 	apZ.ForceLimitMode = Enum.ForceLimitMode.PerAxis
-	apZ.MaxAxesForce = Vector3.new(0, 0, 1e6)
+	apZ.MaxAxesForce = Vector3.new(0, 0, 1e6) --lots of force to overcome and friction with the ground or ramps
 	apZ.Responsiveness = 150
 	apZ.ApplyAtCenterOfMass = true
 	apZ.Enabled = false
 	
 		
-	--attach contrails
+	--attach contrails using attachments on the hands
 	local leftHand = char:WaitForChild("LeftHand")
 	local rightHand = char:WaitForChild("RightHand")
 	if leftHand and rightHand then
 		local cL = ReplicatedStorage.Accessories.Contrail:Clone()
 		cL.Parent = leftHand
-		local wL = Instance.new("Weld", cL)
+		local wL = Instance.new("Weld", cL) --welds make sure they remain with the hands
 		wL.Part0 = leftHand
 		wL.Part1 = cL
 		cL.Position = cL.Parent.Position
@@ -2022,21 +1588,14 @@ function togglePause(showGui: boolean)
 	if tutorialMode then return end --can't toggle pause in tutorial
 	clientUtil.setGamePaused(not clientUtil.getGamePaused())
 
-	--local ddf = playerGui:WaitForChild("ScreenGui"):WaitForChild("PauseMenuFrame"):WaitForChild("DropdownFrame")
 	local height = 225
 	if clientUtil.getGamePaused() then
 		togglePlayerFrozen(true)
-		--[[if showGui and ddf.Size.Y.Offset == 0 then
-			ddf:TweenSize(UDim2.new(0, 75, 0, height), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, .25, true)
-		end]]
 	else
 		togglePlayerFrozen(false)
-		--[[if showGui and ddf.Size.Y.Offset > 0 then
-			ddf:TweenSize(UDim2.new(0, 75, 0, 0), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, .25, true)
-		end]]
-		if playerVerticalStatus == "Sliding" and not actionInputBeingHeld("Down") then
+		if playerVerticalStatus == "Sliding" and not actionInputBeingHeld("Down") then --go back to running if they were sliding when pause started
 			setPlayerVerticalStatus("Running")
-		elseif playerVerticalStatus == "Gliding" and not actionInputBeingHeld("Up") then
+		elseif playerVerticalStatus == "Gliding" and not actionInputBeingHeld("Up") then  --go back to falling if they were gliding
 			setPlayerVerticalStatus("Falling")
 		end
 	end
@@ -2047,7 +1606,7 @@ function togglePause(showGui: boolean)
 end
 
 function toggleContrails(enabled: boolean)
-	for _, descendant in pairs(char:GetDescendants()) do
+	for _, descendant in pairs(char:GetDescendants()) do --search the character for the contrail objects
 		if descendant.Name == "Contrail" then
 			descendant.Trail.Enabled = enabled
 		end
@@ -2059,9 +1618,9 @@ function updateTaskProgress(taskid, qtyDone) --called from all actions that coul
 	if not clientUtil.PlayerData() or not clientUtil.PlayerData().playerTasks then return end
 	for i, t in clientUtil.PlayerData().playerTasks do
 		if t.taskid == taskid and not t.completedTime then
-			local result = ReplicatedStorage.Functions.updateTaskProgressRemote:InvokeServer(taskid, qtyDone)
+			local result = ReplicatedStorage.Functions.updateTaskProgressRemote:InvokeServer(taskid, qtyDone) --tell the server the task finished
 			if result then
-				setPlayerData(result)
+				setPlayerData(result) --record the updated data if this change was approved
 			end
 		end
 	end
@@ -2069,7 +1628,6 @@ end
 
 function setPlayerData(newData) --functions can return immediate playerData to update UI
 	clientUtil.setPlayerData(newData)
-	--print("revives", clientUtil.countPurchasedItems(12))
 	
 	if clientUtil.PlayerData().completedTutorial then
 		toggleRunUIs() --show shop on login after tutorial
@@ -2079,22 +1637,19 @@ function setPlayerData(newData) --functions can return immediate playerData to u
 	local menuFrame = playerGui:WaitForChild("MenuButtonsGui"):WaitForChild("TopBarFrame"):WaitForChild("MenuFrame")
 	if clientUtil.PlayerData().completedTutorial then
 		menuFrame:WaitForChild("SettingsButton").Visible = true
-		if clientUtil.getInLobby() then
-			--menuFrame:WaitForChild("ShopButtonFrame").Visible = true
-		end
 	end
 end
 
 function shakeCamera(intensity)
-	task.spawn(function()
+	task.spawn(function() --don't block the process that called this
 		local origCFrame = camera.CFrame
-		for i = 1, 10 do
+		for i = 1, 10 do --number of shakes to do
 			camera.CFrame = origCFrame * CFrame.new(
 				math.random(-intensity, intensity)/10,
 				math.random(-intensity, intensity)/10,
 				0
-			)
-			RunService.RenderStepped:Wait()
+			) --randomize the angle based on the intensity
+			RunService.RenderStepped:Wait() --make one change per frame
 		end
 		camera.CFrame = origCFrame
 	end)
@@ -2117,18 +1672,18 @@ player.CharacterRemoving:Connect(function() --died or reset.
 	end
 end)
 
-ReplicatedStorage.Functions.togglePause.OnInvoke = function()
+ReplicatedStorage.Functions.togglePause.OnInvoke = function() --listen for pause button being pressed in GUI
 	return togglePause(true)
 end
 
-ReplicatedStorage.Events.returnToLobby.Event:Connect(function()
+ReplicatedStorage.Events.returnToLobby.Event:Connect(function() --listen for reset button being pressed in GUI
 	if not crashed and not clientUtil.getInLobby() then
 		endRun("Lobby button", false)
 	end
 end)
 
 function getCoins()
-	coins = ReplicatedStorage.Functions.getCoins:InvokeServer()
+	coins = ReplicatedStorage.Functions.getCoins:InvokeServer() --request coins from server
 	if coins and coins > 0 then
 		showCoins()
 	end
@@ -2136,11 +1691,11 @@ end
 
 function showCoins()
 	local moneyFrame = playerGui:WaitForChild("MenuButtonsGui"):WaitForChild("TopBarFrame"):WaitForChild("MoneyFrame")
-	moneyFrame.MoneyLabel.Text = helperFunctions.abbreviateNumber(coins)
+	moneyFrame.MoneyLabel.Text = helperFunctions.abbreviateNumber(coins) --format the number as a string
 	moneyFrame.Visible = true
 end
 
-ReplicatedStorage.Events.coinsUpdate.OnClientEvent:Connect(function(newCoins)
+ReplicatedStorage.Events.coinsUpdate.OnClientEvent:Connect(function(newCoins) --listen for server updating coins
 	coins = newCoins
 	showCoins()
 end)
@@ -2151,7 +1706,7 @@ function attemptToBeginRun()
 	end
 end
 
-workspace.StartTouchPart.Touched:Connect(function(hit)
+workspace.StartTouchPart.Touched:Connect(function(hit) --listen for player touching the starting line
 	if hit.Parent == player.Character then
 		attemptToBeginRun()
 	end
@@ -2160,7 +1715,7 @@ end)
 local gameModesGui = playerGui:WaitForChild("GameModesGui")
 local gameModesInnerFrame = gameModesGui:WaitForChild("GameModesFrame"):WaitForChild("GameModesInnerFrame")
 local endlessModeButton = gameModesInnerFrame:WaitForChild("Endless"):WaitForChild("EndlessModeButton")
-endlessModeButton.MouseButton1Click:Connect(function()
+endlessModeButton.MouseButton1Click:Connect(function() --listen for GUI button clicked
 	if clientUtil.getPlayersInHostsParty() > 0 then
 		clientUtil.toastCreateFullScreen("You have other players in your party!")
 	else
@@ -2202,17 +1757,16 @@ function showRaceResults()
 
 	--populate new leaderboard
 	for i, playerData in raceMetadata.racers do
-		local playerFrame = ReplicatedStorage.GuiComponents.RaceResultsPlayerFrame:Clone()
+		local playerFrame = ReplicatedStorage.GuiComponents.RaceResultsPlayerFrame:Clone() --copy the frame template
 		playerFrame.PlayerName.Text = playerData.player.DisplayName
 		playerFrame.Hidden.Text = helperFunctions.formatNumber(i)
-		playerFrame.LayoutOrder = i
+		playerFrame.LayoutOrder = i --sort the order they are displayed in
 		playerFrame.Parent = playerListFrame
-		--playerFrame.UIGradient.Color = playerData.score >= 0 and ColorSequence.new(Color3.fromRGB(255, 255, 255)) or ColorSequence.new(Color3.fromRGB(255, 0, 0))
 	end
 	
 	raceResultsGui.Enabled = true
 	task.delay(5, function()
-		raceResultsGui.Enabled = false
+		raceResultsGui.Enabled = false --hide it again after a delay
 	end)
 end
 
@@ -2236,14 +1790,7 @@ ReplicatedStorage.Events.Revive.reviveDecline.Event:Connect(function()
 	reviveDecline()
 end)
 
-ReplicatedStorage.Events.purchaseCompleted.OnClientEvent:Connect(function(playerData, itemId)
-	setPlayerData(playerData)
-	if itemId == 12 then --if revive was just purchased, attempt to use it right away
-		--reviveApply()
-	end
-end)
-
-ReplicatedStorage.Events.purchasePromptClosed.OnClientEvent:Connect(function(itemId)
+ReplicatedStorage.Events.purchasePromptClosed.OnClientEvent:Connect(function(itemId) --listen for event from server
 	if itemId == 12 then
 		revivePurchasePromptTime = nil
 		reviveDecline()
@@ -2267,4 +1814,4 @@ speedBoostFrame.SpeedBoostButton.MouseButton1Click:Connect(function()
 end)
 
 getCoins() --show coins on login if any
-setPlayerData(ReplicatedStorage.Functions.getPlayerData:InvokeServer())
+setPlayerData(ReplicatedStorage.Functions.getPlayerData:InvokeServer()) --initial load of player data so we have it available locally
